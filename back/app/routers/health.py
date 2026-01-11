@@ -1,3 +1,4 @@
+import app.ml.faiss_index as faiss_store
 from fastapi import APIRouter 
 #APIRouter is used to group routes (endpoints) in a modular way.
 
@@ -25,6 +26,7 @@ def health():
     
     return{
         "status":"running",
+        "faiss":"OK" if faiss_store.faiss_ready else "Loading",
         "database":db_status,
         "redis":redis_status
     }

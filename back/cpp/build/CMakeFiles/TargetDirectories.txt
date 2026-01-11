@@ -1,0 +1,3 @@
+/home/hzard/ai_search_app/cpp/build/CMakeFiles/cpp_preprocess.dir
+/home/hzard/ai_search_app/cpp/build/CMakeFiles/edit_cache.dir
+/home/hzard/ai_search_app/cpp/build/CMakeFiles/rebuild_cache.dir

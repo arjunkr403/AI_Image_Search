@@ -15,6 +15,7 @@ def create_tables():  # to initialize db schema
                         id SERIAL PRIMARY KEY,
                         filename TEXT NOT NULL,
                         filepath TEXT NOT NULL,
+                        image_hash TEXT UNIQUE NOT NULL,
                         uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     );
                     """
@@ -24,7 +25,7 @@ def create_tables():  # to initialize db schema
                     """
                     CREATE TABLE IF NOT EXISTS embeddings (
                         id SERIAL PRIMARY KEY,
-                        image_id INTEGER REFERENCES images(id) ON DELETE CASCADE,
+                        image_id INTEGER UNIQUE REFERENCES images(id) ON DELETE CASCADE,
                         vector FLOAT8[]
                     );
                     """

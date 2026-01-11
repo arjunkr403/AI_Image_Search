@@ -1,0 +1,37 @@
+# Git
+.git
+.gitignore
+
+# Node
+node_modules
+dist
+build
+.next
+out
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.venv
+.env
+.env.locker
+.env.docker
+venv
+
+# Logs
+*.log
+
+# OS / Editor
+.DS_Store
+.vscode
+.idea
+
+# Docker
+Dockerfile
+docker-compose.yml
+
+# WSL / cache
+tmp
+.cache

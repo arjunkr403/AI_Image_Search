@@ -7,11 +7,11 @@ class Settings(BaseSettings):
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str
     POSTGRES_DB: str
-    POSTGRES_HOST: str = "localhost"
-    POSTGRES_PORT: int = 5432
+    POSTGRES_HOST: str 
+    POSTGRES_PORT: int
 #    If .env or OS env does not provide them, the defaults are used.
-    REDIS_HOST: str = "localhost"
-    REDIS_PORT: int = 6379
+    REDIS_HOST: str
+    REDIS_PORT: int
 
     APP_HOST: str = "0.0.0.0"
     APP_PORT: int = 8000

@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: "http://localhost:8000",
+  baseURL: "/api",
 });
 
 export const uploadImages = async (files) => {
@@ -17,11 +17,17 @@ export const uploadImages = async (files) => {
 
   try {
     //axios will set headers and boundaries for fileUpload automatically
-    const response = await api.post("/upload/", formData);
+    const response = await api.post("/upload/", formData, {
+      timeout: 5 * 60 * 1000, //5 minutes for large batches
+    });
     console.log(response.data);
     return response.data;
   } catch (error) {
     throw error;
+  }
+  finally { //Explicitly drop reference to help garbage collection
+    formData.delete("files");
+    if (Array.isArray(files)) files.length = 0;
   }
 };
 

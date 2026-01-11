@@ -21,7 +21,7 @@ def gen_img_embedding(image_path: str):
         embedding = embedding / norm
         # The vector keeps its direction
         # Its length becomes 1
-
+    
     return np.array(embedding).tolist()  # convert numpy -> list for JSON/db
 
 

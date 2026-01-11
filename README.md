@@ -16,7 +16,7 @@
     - FAISS (vector search)
 - 🐳 Containerization
   - Setup Docker + Docker Compose
-  - Started **Postgres** + **Redis** containers
+  - Started *Postgres* + *Redis* containers
 - 📂 Finalized complete folder structure
 
 
@@ -27,22 +27,22 @@
 ### ✔️ Completed
 
 - Created `.env` file for environment variables
-- Implemented configuration handler using **Pydantic** → `config.py`
+- Implemented configuration handler using *Pydantic* → `config.py`
 - Setup PostgreSQL database connection
 - Setup Redis caching connection
 - Added `/health` API route (`routers/health.py`)
 - Registered routers in `main.py`
 - Verified backend infrastructure:
   - 🚀 FastAPI running successfully
-  - 🗄️ DB connection: **OK**
-  - ⚡ Redis cache: **OK**
+  - 🗄️ DB connection: *OK*
+  - ⚡ Redis cache: *OK*
 - Backend skeleton ready for ML search features
 
 
 ### 📘 What I Learned
 
 - Secure environment variables using `.env`
-- Loading app settings via **Pydantic** models
+- Loading app settings via *Pydantic* models
 - PostgreSQL connection flow with `psycopg2`
 - Redis usage for high-speed caching
 - FastAPI modular router architecture
@@ -197,3 +197,35 @@
 - End-to-end debugging, tracing an error from a frontend `AxiosError` to a backend database issue.
 
 ---
+
+## 🚀 Optimizing and Making it Ready for Deployment (Part 1) — 11 Jan 2026
+
+### ✔️ Completed
+- *Production-Ready Architecture:*
+  - Added a root `docker-compose.yml` for local orchestration and created Kubernetes manifests (`/k8s`) for future deployment.
+  - Solved data persistence issues by removing the `uploads` directory from the image and using a named Docker volume to keep files across container restarts.
+- *System Stability & Reliability:*
+  - Hardened the FAISS index by implementing a startup routine that loads from cache or rebuilds from the database, and added a `POST /admin/reindex` endpoint for manual recovery.
+  - Switched to a non-root user inside the container and fixed resulting permission errors, a critical security step for production environments.
+  - Eliminated container restart loops by fixing a `fastapi.logger` crash that occurred during application startup.
+- *Critical Bug & Performance Fixes:*
+  - Resolved an `ImportError` for a shared C++ library (`libopencv_photo.so`) by ensuring it was included in the final stage of the multi-stage Docker build.
+  - Fixed browser crashes (`ERR_NETWORK`) on large uploads by refactoring the frontend to stream files in batches instead of storing thousands of `File` objects in React state.
+  - Increased the Nginx `client_max_body_size` to prevent `413 Request Entity Too Large` errors.
+  - Implemented Redis caching for database calls to improve API response times for search, history, and dashboard statistics.
+
+### 📘 What I Learned
+- *Containers are Stateless:* Runtime data (like user uploads) must be handled by persistent volumes. Storing state in a container image leads to data loss and inconsistency.
+- *Infrastructure Bugs Masquerade as API Bugs:* Many `500`/`502` errors originated from deeper issues like Docker permissions, missing volumes, or Nginx configuration, not application code.
+- *Running as a Non-Root User is a Production Requirement:* It's a key security practice that uncovers hidden flaws in file permissions that are masked when running as `root`.
+- *System Layers Must Be Kept in Sync:* A system with a filesystem, a database, and an in-memory index (FAISS) will fail if its layers become inconsistent. The architecture must account for this.
+- *Docker Workflow Details Matter:* `docker compose restart` only restarts a container and does not apply code changes; `docker compose up --build` is required. Native libraries also require their runtime dependencies to be copied to the final stage of a multi-stage build.
+- *The Browser Has Limits:* Client-side memory can be a major bottleneck. Storing large amounts of data (like thousands of file objects) in React state can crash a browser before network requests are even made.
+
+### 💡 Key Insights & Debugging Moments
+- *Isolating Infra vs. App Bugs:* Proved the backend was working correctly by using `curl http://back:8000/health` from within another container. This confirmed that the 502 errors were caused by the Nginx proxy or Docker networking, not the application code.
+- *Deceptive Browser Errors:* Discovered that a generic `ERR_NETWORK` from the browser during large uploads was not a network failure, but was caused by the browser running out of memory while trying to prepare the request. The backend never even received the call.
+- *Database & Cache Nuances:* Uncovered subtle but critical database and cache behaviors.
+    - A PostgreSQL `ON CONFLICT` statement failed because the target column was missing a `UNIQUE` constraint.
+    - A Redis `DEL upload:history:*` command was silently failing; the correct, safe way to delete wildcard patterns is to use `SCAN` followed by individual `DEL` calls.
+- *The "Immutable Image" Realization:* A key "aha" moment was understanding that `docker compose restart` does not apply any code changes. Only a full `docker compose up --build` creates a new, immutable image with the latest code, which explained why recent fixes weren't appearing.

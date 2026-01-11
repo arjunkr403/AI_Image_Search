@@ -1,0 +1,62 @@
+# Git
+.git
+.gitignore
+
+# Node
+node_modules
+dist
+build
+.next
+out
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.venv
+env
+venv
+
+# Logs
+*.log
+
+# OS / Editor
+.DS_Store
+.vscode
+.idea
+
+# Docker
+Dockerfile
+docker-compose.yml
+
+# WSL / cache
+tmp
+.cache
+
+# frontend junk
+front/node_modules
+front/dist
+front/.next
+
+# python junk
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv
+.env
+
+# git
+.git
+.gitignore
+
+# datasets / uploads
+uploads/
+images/
+data/
+
+# OS junk
+.DS_Store
+Thumbs.db
+

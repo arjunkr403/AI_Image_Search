@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: ai_postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: imagesearch
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d imagesearch"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    container_name: ai_redis
+    ports:
+      - "6379:6379"
+
+  back:
+    build:
+      context: ./back
+      dockerfile: Dockerfile
+    image: 3takle1212/visagefind-backend:v1.1
+    container_name: ai_back
+    env_file:
+      - ./back/.env.docker
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - "8000:8000"
+    volumes:
+      - /mnt/d/visagefind/uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  front:
+    image: 3takle1212/visagefind-frontend:v1.0
+    container_name: ai_front
+    depends_on:
+      back:
+        condition: service_healthy
+    ports:
+      - "3000:8080"
+
+volumes:
+  pgdata:
+    

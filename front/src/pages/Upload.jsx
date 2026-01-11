@@ -69,72 +69,66 @@ export default function Upload() {
     show visual pipeline progress →
     handle success/failure
   */
-
   const handleUpload = async () => {
-    if (files.length === 0) return;
+    if (!fileInputRef.current?.files?.length) return;
 
     setStatus("uploading");
     setErrorMsg("");
-    setCurrStep(1);
+    setCurrStep(1); //Images Saved (pending)
 
-    const totalFiles = files.length;
-    const MAX_BATCH_SIZE = 50; //limit of server
-    const isSmallBatch = totalFiles < MAX_BATCH_SIZE;
+    const fileList = Array.from(fileInputRef.current.files);
+    const totalFiles = fileList.length;
+    const MAX_BATCH_SIZE = 50;
 
     setProgress({ processed: 0, total: totalFiles });
 
-    //for files less than limit
     try {
-      if (isSmallBatch) {
-        await uploadImages(files);
+      let processedCount = 0;
+      let firstBatchDone = false;
+      for (let i = 0; i < totalFiles; i += MAX_BATCH_SIZE) {
+        const chunk = fileList.slice(i, i + MAX_BATCH_SIZE);
 
-        setTimeout(() => setCurrStep(2), 300);
-        setTimeout(() => setCurrStep(3), 600);
-        setTimeout(() => setCurrStep(4), 900);
-        setTimeout(() => {
-          setCurrStep(5);
-          setStatus("success");
-        }, 1200);
-      }
+        await uploadImages(chunk);
 
-      // Large files upload
-      else {
-        let processedCount = 0;
+        processedCount += chunk.length;
+        setProgress({ processed: processedCount, total: totalFiles });
 
-        for (let i = 0; i < totalFiles; i += MAX_BATCH_SIZE) {
-          const chunk = files.slice(i, i + MAX_BATCH_SIZE);
-
-          await uploadImages(chunk);
-
-          processedCount += chunk.length;
-          setProgress({ processed: processedCount, total: totalFiles });
+        //steps transitions
+        if (!firstBatchDone) {
+          //First successful batch-> images are saved
+          setCurrStep(2); //Preprocessing
+          firstBatchDone = true;
+        }
+        else {
 
           const percent = (processedCount / totalFiles) * 100;
 
           let step;
-          if (percent < 25) step = 1;
-          else if (percent < 50) step = 2;
-          else if (percent < 75) step = 3;
-          else step = 4;
+          if (percent <50) step = 2; //preprocessing
+          else if (percent < 70) step = 3; //embedding
+          else step = 4; //FAISS update
 
           setCurrStep(step);
         }
 
-        setCurrStep(5);
-        setStatus("success");
+        // allow browser to release memory between batches
+        await new Promise((r) => setTimeout(r, 50));
       }
 
-      //Cleanup
+      setCurrStep(5);
+      setStatus("success");
+
+      // cleanup
       setTimeout(() => {
         setFiles([]);
         setCurrStep(0);
         setProgress({ processed: 0, total: 0 });
         if (fileInputRef.current) fileInputRef.current.value = "";
-      }, 2000);
+      }, 1000);
     } catch (error) {
       console.error("Batch upload failed:", error);
       setStatus("idle");
-      setErrorMsg(`Failed after uploading images. Check connection`);
+      setErrorMsg("Upload failed. Please try again.");
     }
   };
 
@@ -176,7 +170,7 @@ export default function Upload() {
         />
 
         {files.length > 0 ? (
-          <div className="w-full max-w-lg mb-6 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+          <div className="w-full max-w-lg mb-6">
             <div className="flex justify-between items-center mb-2 px-1">
               <span className="text-sm font-medium text-gray-700">
                 {files.length} files selected
@@ -189,7 +183,7 @@ export default function Upload() {
               </button>
             </div>
 
-            <div className="space-y-2">
+            <div className="max-h-60 overflow-y-auto pr-2 custom-scrollbar space-y-2">
               {files.map((file, index) => (
                 <div
                   key={index}
@@ -279,11 +273,10 @@ export default function Upload() {
             onClick={handleUpload}
             disabled={files.length === 0 || status === "uploading"}
             className={`px-8 py-3 rounded-lg text-white font-medium transition-all
-                    ${
-                      files.length === 0 || status === "uploading"
-                        ? "bg-gray-400 cursor-not-allowed"
-                        : "bg-indigo-600 hover:bg-indigo-700 shadow-lg hover:shadow-indigo-500/30"
-                    }
+                    ${files.length === 0 || status === "uploading"
+                ? "bg-gray-400 cursor-not-allowed"
+                : "bg-indigo-600 hover:bg-indigo-700 shadow-lg hover:shadow-indigo-500/30"
+              }
                 `}
           >
             {status === "uploading"
