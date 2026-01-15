@@ -164,7 +164,7 @@ async def get_search_history(limit: int = 50):
                     "query_image": row["query_image_filename"],
                     "results": row["results"],
                     "time": (
-                        row["created_at"].isoformat() if row["created_at"] else None
+                        row["created_at"].strftime("%Y-%m-%d %H:%M:%S") if row["created_at"] else "N/A"
                     ),
                 }
                 for row in rows
