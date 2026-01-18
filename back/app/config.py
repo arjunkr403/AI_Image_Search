@@ -4,6 +4,12 @@ from pydantic_settings import BaseSettings
 from pathlib import Path
 
 class Settings(BaseSettings):
+    R2_ACCESS_KEY_ID: str
+    R2_SECRET_ACCESS_KEY: str
+    R2_ACCOUNT_ID: str
+    R2_BUCKET: str
+    R2_ENDPOINT: str
+    R2_PUBLIC_URL: str
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str
     POSTGRES_DB: str

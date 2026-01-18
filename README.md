@@ -19,7 +19,6 @@
   - Started *Postgres* + *Redis* containers
 - 📂 Finalized complete folder structure
 
-
 ---
 
 ## 🗓️ Backend Architecture + DB/Redis Setup — 02 Dec 2025
@@ -37,7 +36,6 @@
   - 🗄️ DB connection: *OK*
   - ⚡ Redis cache: *OK*
 - Backend skeleton ready for ML search features
-
 
 ### 📘 What I Learned
 
@@ -66,7 +64,6 @@
 - Registered upload router in main.py
 - Tested upload functionality successfully using Postman
 
-
 ### 📘 What I Learned
 
 - Handling file uploads using FastAPI’s UploadFile
@@ -76,9 +73,7 @@
 - Building modular, scalable router structures in FastAPI
 - Designing a file-storage workflow required for ML pipelines
 
-
 ---
-
 
 ## 📅 Embedding Generation & FAISS Preparation — 09 Dec 2025
 
@@ -104,9 +99,7 @@
 - How FAISS indexes work (IndexFlatL2, dimension detection)
 - Designing an end-to-end embedding pipeline for image search
 
-
 ---
-
 
 ## 📅 Search Pipeline (FAISS + Similarity Search API) — 09 Dec 2025
 
@@ -133,9 +126,7 @@
 - Mapping FAISS results back to database image records
 - Building a complete semantic image search workflow
 
-
 ---
-
 
 ## 📅 C++ Image Preprocessing Optimization — 12 Dec 2025
 
@@ -171,7 +162,6 @@
 - How to structure a mixed C++ + Python production pipeline
 - How to debug import paths for compiled .so modules
 
-
 ---
 
 ## 📅 Full-Stack Integration & Frontend Features — 27 Dec 2025
@@ -201,9 +191,11 @@
 ## 📅 Optimizing and Making it Ready for Deployment (Part 1) — 11 Jan 2026
 
 ### ✔️ Completed
+
 - *Production-Ready Architecture:*
   - Added a root `docker-compose.yml` for local orchestration and created Kubernetes manifests (`/k8s`) for future deployment.
   - Solved data persistence issues by removing the `uploads` directory from the image and using a named Docker volume to keep files across container restarts.
+
 - *System Stability & Reliability:*
   - Hardened the FAISS index by implementing a startup routine that loads from cache or rebuilds from the database, and added a `POST /admin/reindex` endpoint for manual recovery.
   - Switched to a non-root user inside the container and fixed resulting permission errors, a critical security step for production environments.
@@ -215,17 +207,71 @@
   - Implemented Redis caching for database calls to improve API response times for search, history, and dashboard statistics.
 
 ### 📘 What I Learned
+
 - *Containers are Stateless:* Runtime data (like user uploads) must be handled by persistent volumes. Storing state in a container image leads to data loss and inconsistency.
+
 - *Infrastructure Bugs Masquerade as API Bugs:* Many `500`/`502` errors originated from deeper issues like Docker permissions, missing volumes, or Nginx configuration, not application code.
+
 - *Running as a Non-Root User is a Production Requirement:* It's a key security practice that uncovers hidden flaws in file permissions that are masked when running as `root`.
+
 - *System Layers Must Be Kept in Sync:* A system with a filesystem, a database, and an in-memory index (FAISS) will fail if its layers become inconsistent. The architecture must account for this.
+
 - *Docker Workflow Details Matter:* `docker compose restart` only restarts a container and does not apply code changes; `docker compose up --build` is required. Native libraries also require their runtime dependencies to be copied to the final stage of a multi-stage build.
+
 - *The Browser Has Limits:* Client-side memory can be a major bottleneck. Storing large amounts of data (like thousands of file objects) in React state can crash a browser before network requests are even made.
 
 ### 💡 Key Insights & Debugging Moments
+
 - *Isolating Infra vs. App Bugs:* Proved the backend was working correctly by using `curl http://back:8000/health` from within another container. This confirmed that the 502 errors were caused by the Nginx proxy or Docker networking, not the application code.
+
 - *Deceptive Browser Errors:* Discovered that a generic `ERR_NETWORK` from the browser during large uploads was not a network failure, but was caused by the browser running out of memory while trying to prepare the request. The backend never even received the call.
+
 - *Database & Cache Nuances:* Uncovered subtle but critical database and cache behaviors.
     - A PostgreSQL `ON CONFLICT` statement failed because the target column was missing a `UNIQUE` constraint.
     - A Redis `DEL upload:history:*` command was silently failing; the correct, safe way to delete wildcard patterns is to use `SCAN` followed by individual `DEL` calls.
 - *The "Immutable Image" Realization:* A key "aha" moment was understanding that `docker compose restart` does not apply any code changes. Only a full `docker compose up --build` creates a new, immutable image with the latest code, which explained why recent fixes weren't appearing.
+
+---
+
+## 📅 Cloud Deployment & Stateless Storage Migration (Render + Cloudflare R2) — 17 Jan 2026
+
+### ✔️ Completed
+
+-  *Prepared backend for cloud deployment on Render*
+  - Verified Dockerfile is production-ready (multi-stage build, non-root user, healthcheck).
+  - Removed dependency on container-local persistent storage to support Render free tier.
+  - Confirmed backend can run without docker-compose or bind mounts.
+
+- *Migrated image storage from local filesystem to Cloudflare R2*
+  - Created Cloudflare R2 account and bucket.
+  - Enabled public access using r2.dev domain.
+  - Generated scoped Account API Token with read/write access to the bucket.
+  - Integrated R2 credentials into Render Environment Groups.
+
+- *Refactored upload pipeline to be fully stateless*
+  - Removed /uploads directory and Docker volume dependency.
+  - Implemented streaming-based uploads directly to Cloudflare R2 using boto3.
+  - Added incremental SHA-256 hashing while streaming to detect duplicate images.
+  - Stored public R2 URLs in PostgreSQL instead of local file paths.
+
+- *Preserved ML pipeline correctness during migration*
+  - Continued generating CLIP embeddings using a short-lived temporary file.
+  - Ensured FAISS index updates still occur in real time after each upload.
+  - Maintained database ↔ FAISS ID consistency during uploads.
+- *Updated similarity search API for cloud storage*
+  - Modified /search endpoint to return R2-hosted image URLs.
+  - Removed all assumptions about /uploads static file serving.
+  - Confirmed frontend renders images directly from Cloudflare CDN with no changes required.
+
+- *Cleaned up obsolete infrastructure assumptions*
+  - Removed static file serving (StaticFiles("/uploads")) from FastAPI.
+  - Identified Docker bind mounts and upload paths as legacy local-only concepts.
+  - Confirmed frontend no longer depends on backend file hosting.
+
+### 📘 What I Learned
+
+- Containers should be stateless; persistence belongs in external services.
+- Object storage (R2/S3) is the correct solution for user uploads.
+- Streaming uploads prevent memory issues on both browser and backend.
+- Backend should coordinate uploads, not act as a file server.
+- Cloud-native design simplifies future AWS migration.

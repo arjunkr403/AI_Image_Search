@@ -54,7 +54,6 @@ COPY --from=builder /build/cpp_preprocess.so app/ml/
 
 # ---------- Non-root user ----------
 RUN useradd -m appuser \
-    && mkdir -p /app/uploads \
     && chown -R appuser:appuser /app
 
 USER appuser

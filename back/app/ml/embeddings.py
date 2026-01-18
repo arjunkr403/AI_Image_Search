@@ -26,9 +26,9 @@ def gen_img_embedding(image_path: str):
 
 
 # image_path
-#  → C++ preprocess → NumPy
+#  → C++ preprocess → NumPy(224x224*3)
 #  → PIL Image
 #  → model.encode([PIL], convert_to_numpy=True)
-#  → numpy embedding
+#  → numpy embedding (512D)
 #  → normalized numpy vector (unit length)
 #  → list (JSON / DB safe)
