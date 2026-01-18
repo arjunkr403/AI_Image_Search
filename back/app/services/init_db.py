@@ -20,19 +20,7 @@ def create_tables():  # to initialize db schema
                     );
                     """
                 )
-
-                cur.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS embeddings (
-                        id SERIAL PRIMARY KEY,
-                        image_id INTEGER UNIQUE REFERENCES images(id) ON DELETE CASCADE,
-                        vector FLOAT8[]
-                    );
-                    """
-                    # If the image is deleted, its embedding gets deleted automatically (cascade delete).
-                    # vector FLOAT8[]=> PostgreSQL array type (float8 = double precision = Python float).
-                )
-
+                # Search history (results come from ML service)
                 cur.execute(
                     """
                     CREATE TABLE IF NOT EXISTS search_history (
@@ -43,9 +31,10 @@ def create_tables():  # to initialize db schema
                     );
                     """
                 )
+                
         print("Db initialized")
+    
     except Exception as e:
-        print(f"Database error: {e}")
         if conn:
             conn.rollback()  # rollback on error
         raise HTTPException(status_code=500, detail="DB init failed.")

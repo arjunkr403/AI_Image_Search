@@ -1,4 +1,3 @@
-import app.ml.faiss_index as faiss_store
 from app.services.db import get_db_connection, release_db_connection
 from app.services.cache import redis_client
 from fastapi import APIRouter
@@ -15,6 +14,7 @@ async def get_dashboard_stats():
     if cached:
         # Deserializes a JSON string → Python object
         return json.loads(cached)
+    
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:

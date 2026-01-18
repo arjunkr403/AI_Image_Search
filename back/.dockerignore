@@ -35,3 +35,4 @@ docker-compose.yml
 # WSL / cache
 tmp
 .cache
+back/app/routers/embedding.py

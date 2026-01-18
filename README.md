@@ -233,45 +233,47 @@
 
 ---
 
-## 📅 Cloud Deployment & Stateless Storage Migration (Render + Cloudflare R2) — 17 Jan 2026
+## 📅 Cloud Deployment & Stateless Architecture Refactor — 17 Jan 2026
 
 ### ✔️ Completed
 
--  *Prepared backend for cloud deployment on Render*
-  - Verified Dockerfile is production-ready (multi-stage build, non-root user, healthcheck).
-  - Removed dependency on container-local persistent storage to support Render free tier.
-  - Confirmed backend can run without docker-compose or bind mounts.
+- *Prepared backend for free-tier cloud deployment (Render)*
+  - Refactored backend to run fully stateless with no Docker volumes or bind mounts.
+  - Removed all ML dependencies and in-memory indexing logic from backend.
+  - Backend now runs independently using only Postgres, Redis, and Cloudflare R2.
+  - Verified backend can be deployed without Docker Compose.
 
-- *Migrated image storage from local filesystem to Cloudflare R2*
-  - Created Cloudflare R2 account and bucket.
-  - Enabled public access using r2.dev domain.
-  - Generated scoped Account API Token with read/write access to the bucket.
-  - Integrated R2 credentials into Render Environment Groups.
+- *Migrated image storage to Cloudflare R2*
+  - Created Cloudflare R2 bucket and enabled public access via `r2.dev`.
+  - Generated scoped API token with minimal read/write permissions.
+  - Integrated R2 credentials via Render Environment Groups.
+  - Stored only public R2 URLs in PostgreSQL (no local file paths).
 
-- *Refactored upload pipeline to be fully stateless*
-  - Removed /uploads directory and Docker volume dependency.
-  - Implemented streaming-based uploads directly to Cloudflare R2 using boto3.
-  - Added incremental SHA-256 hashing while streaming to detect duplicate images.
-  - Stored public R2 URLs in PostgreSQL instead of local file paths.
+- *Decoupled ML pipeline into a separate ML service*
+  - Extracted CLIP embedding generation and FAISS indexing into a standalone ML service.
+  - Backend now communicates with ML service via HTTP (`/embed`, `/search`, `/admin/reindex`).
+  - ML service maintains FAISS index in-memory (ephemeral by design for free tier).
+  - Added manual reindex endpoint to rebuild FAISS from persisted image metadata when needed.
 
-- *Preserved ML pipeline correctness during migration*
-  - Continued generating CLIP embeddings using a short-lived temporary file.
-  - Ensured FAISS index updates still occur in real time after each upload.
-  - Maintained database ↔ FAISS ID consistency during uploads.
-- *Updated similarity search API for cloud storage*
-  - Modified /search endpoint to return R2-hosted image URLs.
-  - Removed all assumptions about /uploads static file serving.
-  - Confirmed frontend renders images directly from Cloudflare CDN with no changes required.
+- *Refactored upload and search APIs for service-based ML*
+  - Upload flow:
+    - Stream image → upload to R2 → persist metadata → notify ML service.
+  - Search flow:
+    - Backend proxies query image to ML service → returns similarity results.
+  - Removed backend-side FAISS, embeddings table, and embedding rebuild logic.
 
-- *Cleaned up obsolete infrastructure assumptions*
-  - Removed static file serving (StaticFiles("/uploads")) from FastAPI.
-  - Identified Docker bind mounts and upload paths as legacy local-only concepts.
-  - Confirmed frontend no longer depends on backend file hosting.
+- *Simplified backend responsibilities*
+  - Backend now handles only:
+    - API orchestration
+    - PostgreSQL metadata and history
+    - Redis caching
+    - Object storage coordination
+  - Removed static file serving (`/uploads`) and legacy filesystem assumptions.
 
 ### 📘 What I Learned
 
-- Containers should be stateless; persistence belongs in external services.
-- Object storage (R2/S3) is the correct solution for user uploads.
-- Streaming uploads prevent memory issues on both browser and backend.
-- Backend should coordinate uploads, not act as a file server.
-- Cloud-native design simplifies future AWS migration.
+- True stateless backends require externalizing *both storage and ML state*.
+- Object storage is the correct persistence layer for large binary data.
+- ML systems on free tiers require explicit trade-offs (ephemeral indexes + manual rebuilds).
+- Separating orchestration (backend) from computation (ML service) improves reliability.
+- Designing for constraints early simplifies future AWS-scale migration.

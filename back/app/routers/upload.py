@@ -1,14 +1,11 @@
-# HTTPException Used to return custom error responses
 import uuid  # Used to generate unique IDs for filenames to avoid collisions
 from typing import List
 import json
 import hashlib
-import numpy as np
 import os
 import tempfile
+import requests
 
-import app.ml.faiss_index as faiss_store
-from app.ml.embeddings import gen_img_embedding
 from app.services.cache import redis_client
 from app.services.db import get_db_connection, release_db_connection
 from app.services.r2 import upload_file
@@ -20,6 +17,8 @@ from PIL import Image  # verify files are real images
 
 router = APIRouter(prefix="/upload", tags=["Upload"])
 
+ML_SERVICE_URL = settings.ML_SERVICE_URL  # env var
+
 
 @router.post("/")
 # Accepts an uploaded file from the client using multipart/form-data
@@ -27,6 +26,12 @@ router = APIRouter(prefix="/upload", tags=["Upload"])
 # File(...) means this field is required
 async def upload_images(files: List[UploadFile] = File(...)):
     uploaded_results = []
+    
+    if not ML_SERVICE_URL:
+        raise HTTPException(
+        status_code=503,
+        detail="ML service not configured"
+    )
 
     for file in files:
         # validating file type
@@ -73,6 +78,7 @@ async def upload_images(files: List[UploadFile] = File(...)):
             raise HTTPException(500, f"Failed to save file {file.filename}:{e}")
         finally:
             temp_file.close()
+
         # Hash is computed incrementally over the full byte stream:
         # hash(image_bytes) == hash(chunk1 || chunk2 || ...)
         image_hash = hasher.hexdigest()
@@ -97,19 +103,20 @@ async def upload_images(files: List[UploadFile] = File(...)):
                         }
                     )
                     continue
-                #uploading to r2 (streaming)
-                with open (temp_file.name,"rb") as f: #opened temp_file in binary mode
+
+                # uploading to r2 (streaming)
+                with open(temp_file.name, "rb") as f:  # opened temp_file in binary mode
                     upload_file(
                         file_obj=f,
                         key=r2_key,
                         content_type=file.content_type,
                     )
-                    
-                #store r2 url in db
+
+                # store r2 url in db
                 file_url = f"{settings.R2_PUBLIC_URL}/{r2_key}"
                 cur.execute(
                     """
-                    INSERT INTO images (filename, filepath,image_hash)
+                    INSERT INTO images (filename, filepath, image_hash)
                     VALUES (%s, %s, %s)
                     RETURNING id;
                 """,
@@ -118,58 +125,61 @@ async def upload_images(files: List[UploadFile] = File(...)):
                 image_id = cur.fetchone()["id"]  # getting id of inserted row
                 conn.commit()
 
-            vector = gen_img_embedding(temp_file.name)
-
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                        INSERT INTO embeddings (image_id, vector)
-                        VALUES (%s, %s)
-                        ON CONFLICT (image_id) DO UPDATE
-                        SET vector = EXCLUDED.vector;
-                    """,
-                    (image_id, vector),
-                )
-                conn.commit()
-                # updating FAISS index in real time
-                # ensure FAISS is loaded
-            if not faiss_store.faiss_ready:
-                faiss_store.load_faiss_index()
-            if faiss_store.faiss_ready:
-                vector_np = np.array([vector], dtype="float32")
-                faiss_store.faiss_index.add(vector_np)  # add new embedding to index
-                faiss_store.faiss_ids.append(image_id)  # maintain mapping
-
         except Exception as e:
             conn.rollback()
             raise
 
         finally:
-            release_db_connection(conn) 
+            release_db_connection(conn)
             try:
                 os.unlink(temp_file.name)
             except FileNotFoundError:
                 pass
+
+        # Calling ML service (async via HTTP)
+        try:
+            r = requests.post(
+                f"{ML_SERVICE_URL}/embed",
+                json={
+                    "image_url": file_url,
+                    "image_id": image_id,
+                },
+                timeout=60,
+            )
+            r.raise_for_status()
+        except Exception as e:
+            # IMPORTANT: backend upload succeeded, ML failed
+            uploaded_results.append(
+                {
+                    "image_id": image_id,
+                    "filename": filename,
+                    "url": file_url,
+                    "ml_status": "FAILED",
+                }
+            )
+            continue
+
+        # Cache upload metadata
+        redis_client.set(f"image:{filename}", file_url)
+
+        # Invalidate related caches
+        redis_client.delete("dashboard:stats")
+        redis_client.delete("search:history:50")
+
         uploaded_results.append(
             {
                 "image_id": image_id,
                 "filename": filename,
                 "url": file_url,
+                "ml_status": "OK",
             }
         )
-        # Cache upload metadata
-        redis_client.set(f"image:{filename}", file_url)
-        # Invalidate related caches
-        redis_client.delete("dashboard:stats")
-        redis_client.delete("embeddings:all")
-        redis_client.delete("search:history:50")
-
-    # persisting faiss_store once per batch
-    faiss_store.save_faiss()
 
     for key in redis_client.scan_iter("upload:history:*"):
         redis_client.delete(key)
+
     return {"message": "Images uploaded successfully", "uploaded": uploaded_results}
+
 
 # Browser
 #  → FastAPI
@@ -180,6 +190,7 @@ async def upload_images(files: List[UploadFile] = File(...)):
 #    → generate embedding
 #    → store R2 URL in DB
 #  → Frontend loads image directly from R2
+
 
 @router.get("/history")
 async def get_upload_history(limit: int = 50):

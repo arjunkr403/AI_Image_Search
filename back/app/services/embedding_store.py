@@ -20,3 +20,5 @@ def fetch_all_embeddings():
             return data
     finally:
         release_db_connection(conn)
+
+

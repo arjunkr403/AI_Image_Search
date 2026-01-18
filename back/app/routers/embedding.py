@@ -10,7 +10,6 @@
 
 # router = APIRouter(prefix="/embed", tags=["Embeddings"])
 
-
 # @router.post("/{image_id}")
 # def embed_image(image_id: int):
 #     conn = get_db_connection()
