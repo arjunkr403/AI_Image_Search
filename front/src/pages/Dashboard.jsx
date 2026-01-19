@@ -8,7 +8,6 @@ export default function Dashboard() {
   const [stats, setStats] = useState({
     total_images: 0,
     total_searches: 0,
-    system_status: "Checking...",
     recent_activity: [],
   });
 
@@ -19,7 +18,6 @@ export default function Dashboard() {
         setStats(data);
       } catch (error) {
         console.error("Failed to load dashboard stats", error);
-        setStats((prev) => ({ ...prev, system_status: "Error" }));
       }
     }
     fetchStats();
@@ -28,10 +26,10 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       {/* Statistics */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+     <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         <StatsCard
           label="Total Searches"
-          value={stats.total_searches.toString()}
+          value={stats.total_searches.toLocaleString()}
           trend="--"
           trendType="neutral"
         />
@@ -42,18 +40,13 @@ export default function Dashboard() {
           trendType="up"
         />
         <StatsCard
-          label="Vectors Indexed"
-          value={stats.total_images.toLocaleString()}
-          trend="100%"
-          trendType="up"
-        />
-        <StatsCard
-          label="System Status"
-          value={stats.system_status}
-          trend="Health"
-          trendType={stats.system_status === "Active" ? "up" : "down"}
+          label="Indexed Images"
+          value="Dynamic"
+          trend="Rebuilt on restart"
+          trendType="neutral"
         />
       </section>
+
 
       {/* System Health and Recent Activity */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
