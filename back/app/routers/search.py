@@ -2,30 +2,29 @@ import json
 import hashlib
 import requests
 
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+
 from app.services.db import get_db_connection, release_db_connection
 from app.services.cache import redis_client
 from app.config import settings
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
-from pydantic import BaseModel
 router = APIRouter(prefix="/search", tags=["Search"])
 
 ML_SERVICE_URL = settings.ML_SERVICE_URL
 
+
 class SearchRequest(BaseModel):
     image_url: str
-    top_k: int = 5 
+    top_k: int = 5
 
 
 @router.post("/")
-async def search_similar_images(req : SearchRequest):
+async def search_similar_images(req: SearchRequest):
     if not ML_SERVICE_URL:
-        raise HTTPException(
-            status_code=503,
-            detail="ML service not configured",
-        )
+        raise HTTPException(status_code=503, detail="ML service not configured")
 
-    # generate deterministic cache key from image content
+    # Cache key (stable for same query image)
     image_hash = hashlib.sha256(req.image_url.encode()).hexdigest()
     cache_key = f"search:{image_hash}:{req.top_k}"
 
@@ -33,7 +32,7 @@ async def search_similar_images(req : SearchRequest):
     if cached:
         return json.loads(cached)
 
-    # cache miss : call ML service
+    # ---- Call ML service ----
     try:
         r = requests.post(
             f"{ML_SERVICE_URL}/search",
@@ -45,68 +44,82 @@ async def search_similar_images(req : SearchRequest):
         )
         r.raise_for_status()
         ml_response = r.json()
-        
     except Exception:
-        raise HTTPException(
-            status_code=502,
-            detail="ML search service unavailable",
-        )
+        raise HTTPException(status_code=502, detail="ML search service unavailable")
 
     results = ml_response.get("results")
     if not isinstance(results, list):
-        raise HTTPException(
-            status_code=502,
-            detail="Invalid response from ML service",
-        )
-        
+        raise HTTPException(status_code=502, detail="Invalid ML response")
+
+    if not results:
+        return {"query_image": req.image_url, "results": []}
+
+    image_ids = [r["image_id"] for r in results]
+
+    # ---- Fetch DB metadata ----
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
+            # Get query image id (to exclude self match)
             cur.execute(
-                "INSERT INTO search_history (query_image_filename,results) VALUES (%s,%s)",
-                (req.image_url, json.dumps(results)),
+                "SELECT id FROM images WHERE filepath = %s",
+                (req.image_url,),
             )
-            conn.commit()
+            row = cur.fetchone()
+            query_image_id = row["id"] if row else None
 
-    except Exception:
-        if conn:
-            conn.rollback()  # rollback on error
-        raise HTTPException(status_code=500, detail="Database operation failed.")
+            # Fetch result images
+            cur.execute(
+                """
+                SELECT id, filename, filepath
+                FROM images
+                WHERE id = ANY(%s)
+                """,
+                (image_ids,),
+            )
+            rows = cur.fetchall()
 
+            image_map = {
+                row["id"]: {
+                    "image_url": row["filepath"],
+                    "filename": row["filename"],
+                }
+                for row in rows
+            }
     finally:
-        if conn:
-            release_db_connection(conn)
+        release_db_connection(conn)
 
-    # final response
-    response = {"query_image": req.image_url, "results": results}
+    # ---- Merge ML + DB (exclude query image) ----
+    enriched_results = []
+    for r in results:
+        if r["image_id"] == query_image_id:
+            continue  # remove self-match
+
+        meta = image_map.get(r["image_id"])
+        if not meta:
+            continue
+
+        enriched_results.append(
+            {
+                "image_id": r["image_id"],
+                "score": r["score"],           # cosine similarity
+                "image_url": meta["image_url"],
+                "filename": meta["filename"],
+            }
+        )
+    enriched_results.sort(key=lambda x: x["score"], reverse=True)
+    response = {
+        "query_image": req.image_url,
+        "results": enriched_results,
+    }
 
     redis_client.setex(cache_key, 300, json.dumps(response))
-
     return response
-
-
-#  Client
-#  → sends image_url + top_k (JSON)
-#  → Backend /search
-#       → hash(image_url)
-#       → Redis cache lookup
-#         → hit → return cached results
-#         → miss:
-#              → call ML service with image_url
-#              → ML downloads image from R2
-#              → C++ preprocess
-#              → CLIP embedding
-#              → FAISS similarity search
-#              → return results
-#       → store search history in DB
-#       → cache response in Redis
-#       → return results to client
 
 
 @router.get("/history")
 async def get_search_history(limit: int = 50):
-
-    cache_key = f"search:history:limit:{limit}"
+    cache_key = f"search:history:{limit}"
     cached = redis_client.get(cache_key)
 
     if cached:
@@ -117,14 +130,13 @@ async def get_search_history(limit: int = 50):
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id,query_image_filename,results,created_at
+                SELECT id, query_image_filename, results, created_at
                 FROM search_history
                 ORDER BY created_at DESC
                 LIMIT %s;
                 """,
                 (limit,),
             )
-
             rows = cur.fetchall()
 
             history = [
@@ -140,9 +152,8 @@ async def get_search_history(limit: int = 50):
                 }
                 for row in rows
             ]
-            
-            redis_client.setex(cache_key, 300, json.dumps(history))
 
+            redis_client.setex(cache_key, 300, json.dumps(history))
             return history
     finally:
         release_db_connection(conn)

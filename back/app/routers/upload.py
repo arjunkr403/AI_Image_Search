@@ -20,6 +20,7 @@ router = APIRouter(prefix="/upload", tags=["Upload"])
 ML_SERVICE_URL = settings.ML_SERVICE_URL  # env var
 
 
+@router.post("")
 @router.post("/")
 # Accepts an uploaded file from the client using multipart/form-data
 # UploadFile allows streaming large files without loading them fully into memory
@@ -88,10 +89,11 @@ async def upload_images(files: List[UploadFile] = File(...)):
             with conn.cursor() as cur:
 
                 cur.execute(
-                    "SELECT id FROM images WHERE image_hash = %s",
+                    "SELECT id,filepath FROM images WHERE image_hash = %s",
                     (image_hash,),
                 )
                 existing = cur.fetchone()
+                print(existing)
                 if existing:
                     os.unlink(temp_file.name)
 
@@ -100,7 +102,9 @@ async def upload_images(files: List[UploadFile] = File(...)):
                             "image_id": existing["id"],
                             "duplicate": True,
                             "filename": file.filename,
-                        }
+                            "image_url": existing["filepath"],
+                            "ml_status": "SKIPPED",
+                        }   
                     )
                     continue
 
@@ -153,7 +157,7 @@ async def upload_images(files: List[UploadFile] = File(...)):
                 {
                     "image_id": image_id,
                     "filename": filename,
-                    "url": file_url,
+                    "image_url": file_url,
                     "ml_status": "FAILED",
                 }
             )
@@ -170,7 +174,7 @@ async def upload_images(files: List[UploadFile] = File(...)):
             {
                 "image_id": image_id,
                 "filename": filename,
-                "url": file_url,
+                "image_url": file_url,
                 "ml_status": "OK",
             }
         )

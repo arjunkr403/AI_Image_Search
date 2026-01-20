@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import ImageCard from "../components/ImageCard";
-import { searchImages, uploadImages} from "../services/api";
+import { searchImages, uploadImages } from "../services/api";
 
 export default function Search() {
   const [queryImage, setQueryImage] = useState(null);
@@ -10,17 +10,15 @@ export default function Search() {
   const [results, setResults] = useState([]);
   const [searchTime, setSearchTime] = useState(0);
 
-
   const handleImageSelect = (e) => {
     const file = e.target.files[0];
 
-    if (!file)
-      return;
+    if (!file) return;
 
-      setQueryImage(file);
-      setPreviewUrl(URL.createObjectURL(file)); //create a blob url for browser to see the image
-      // Reset results when new image is picked
-      setResults([]);
+    setQueryImage(file);
+    setPreviewUrl(URL.createObjectURL(file)); //create a blob url for browser to see the image
+    // Reset results when new image is picked
+    setResults([]);
   };
 
   const clearImage = (e) => {
@@ -42,14 +40,15 @@ export default function Search() {
     if (!queryImage) return;
     setIsSearching(true);
     setResults([]);
-   try {
+    try {
       const start = performance.now();
 
       const uploadRes = await uploadImages(queryImage);
 
       // expected backend response:
       // { uploaded: [{ id, filename, url }] }
-      const imageUrl = uploadRes?.uploaded?.[0]?.url;
+      const imageUrl = uploadRes?.uploaded?.[0]?.image_url;
+      console.log("Uploaded image URL:", imageUrl);
 
       if (!imageUrl || typeof imageUrl !== "string") {
         throw new Error("Upload succeeded but image_url missing");
@@ -64,9 +63,9 @@ export default function Search() {
       // 3️⃣ Map backend results → UI format
       const mappedResults = response.results.map((item) => ({
         id: item.image_id,
-        url: item.url,
+        url: item.image_url,
         filename: item.filename,
-        score: 1 / (1 + item.score), // L2 → similarity
+        score: item.score,
       }));
 
       setResults(mappedResults);
@@ -77,7 +76,6 @@ export default function Search() {
       setIsSearching(false);
     }
   };
-
 
   return (
     <div className="max-w-6xl mx-auto p-4 space-y-8">
