@@ -28,18 +28,18 @@ export const uploadImages = async (files) => {
   }
 };
 
-export const searchImages = async (file, topK = 5) => {
-  const formData = new FormData();
-  formData.append("file", file);
-
+export const searchImages = async (imageUrl, topK = 5) => {
   try {
-    const response = await api.post(`/search/?top_k=${topK}`, formData);
-    console.log(response.data);
+    const response = await api.post("/search", {
+      image_url: imageUrl,
+      top_k: topK,
+    });
     return response.data;
   } catch (error) {
     throw error;
   }
 };
+
 
 export const getUploadHistory = async () => {
   try {
