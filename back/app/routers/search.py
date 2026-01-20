@@ -7,43 +7,40 @@ from app.services.cache import redis_client
 from app.config import settings
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
-
+from pydantic import BaseModel
 router = APIRouter(prefix="/search", tags=["Search"])
 
 ML_SERVICE_URL = settings.ML_SERVICE_URL
 
+class SearchRequest(BaseModel):
+    image_url: str
+    top_k: int = 5 
+
+
 @router.post("/")
-async def search_similar_images(file: UploadFile = File(...), top_k: int = 5):
-    
+async def search_similar_images(req : SearchRequest):
     if not ML_SERVICE_URL:
         raise HTTPException(
             status_code=503,
             detail="ML service not configured",
         )
-    
-    # read uploaded image into bytes
-    content = await file.read()
-    if len(content) > 10 * 1024 * 1024:
-        raise HTTPException(413, "File too large")
-    
+
     # generate deterministic cache key from image content
-    image_hash = hashlib.sha256(content).hexdigest()
-    cache_key = f"search:{image_hash}:{top_k}"
+    image_hash = hashlib.sha256(req.image_url.encode()).hexdigest()
+    cache_key = f"search:{image_hash}:{req.top_k}"
 
     cached = redis_client.get(cache_key)
     if cached:
         return json.loads(cached)
 
-    # cache miss : normal flow
-    
+    # cache miss : call ML service
     try:
-        files = {
-            "file": (file.filename, content, file.content_type),
-        }
         r = requests.post(
             f"{ML_SERVICE_URL}/search",
-            files=files,
-            params={"top_k": top_k},
+            json={
+                "image_url": req.image_url,
+                "top_k": req.top_k,
+            },
             timeout=60,
         )
         r.raise_for_status()
@@ -67,7 +64,7 @@ async def search_similar_images(file: UploadFile = File(...), top_k: int = 5):
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO search_history (query_image_filename,results) VALUES (%s,%s)",
-                (file.filename, json.dumps(results)),
+                (req.image_url, json.dumps(results)),
             )
             conn.commit()
 
@@ -81,32 +78,35 @@ async def search_similar_images(file: UploadFile = File(...), top_k: int = 5):
             release_db_connection(conn)
 
     # final response
-    response = {"query_image": file.filename, "results": results}
+    response = {"query_image": req.image_url, "results": results}
 
     redis_client.setex(cache_key, 300, json.dumps(response))
 
     return response
 
 
-# Client image
-#  → read bytes
-#  → hash(bytes)
-#  → Redis cache lookup
-#    → hit → return
-#    → miss:
-#         → temp file
-#         → embedding
-#         → FAISS search
-#         → DB fetch
-#         → store history
-#         → cache result
-#         → return
+#  Client
+#  → sends image_url + top_k (JSON)
+#  → Backend /search
+#       → hash(image_url)
+#       → Redis cache lookup
+#         → hit → return cached results
+#         → miss:
+#              → call ML service with image_url
+#              → ML downloads image from R2
+#              → C++ preprocess
+#              → CLIP embedding
+#              → FAISS similarity search
+#              → return results
+#       → store search history in DB
+#       → cache response in Redis
+#       → return results to client
 
 
 @router.get("/history")
 async def get_search_history(limit: int = 50):
 
-    cache_key = f"search:history:{limit}"
+    cache_key = f"search:history:limit:{limit}"
     cached = redis_client.get(cache_key)
 
     if cached:
