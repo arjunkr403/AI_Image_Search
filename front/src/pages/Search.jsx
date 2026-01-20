@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import ImageCard from "../components/ImageCard";
-import { searchImages } from "../services/api";
+import { searchImages, uploadImages} from "../services/api";
 
 export default function Search() {
   const [queryImage, setQueryImage] = useState(null);
