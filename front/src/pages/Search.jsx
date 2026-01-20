@@ -9,14 +9,18 @@ export default function Search() {
   const [isSearching, setIsSearching] = useState(false);
   const [results, setResults] = useState([]);
   const [searchTime, setSearchTime] = useState(0);
+
+
   const handleImageSelect = (e) => {
     const file = e.target.files[0];
-    if (file) {
+
+    if (!file)
+      return;
+
       setQueryImage(file);
       setPreviewUrl(URL.createObjectURL(file)); //create a blob url for browser to see the image
       // Reset results when new image is picked
       setResults([]);
-    }
   };
 
   const clearImage = (e) => {
@@ -38,26 +42,42 @@ export default function Search() {
     if (!queryImage) return;
     setIsSearching(true);
     setResults([]);
-    try {
+   try {
       const start = performance.now();
-      const response = await searchImages(queryImage, topK);
-      const end = performance.now();
 
+      const uploadRes = await uploadImages(queryImage);
+
+      // expected backend response:
+      // { uploaded: [{ id, filename, url }] }
+      const imageUrl = uploadRes?.uploaded?.[0]?.url;
+
+      if (!imageUrl || typeof imageUrl !== "string") {
+        throw new Error("Upload succeeded but image_url missing");
+      }
+
+      // 2️⃣ Search using image_url (JSON)
+      const response = await searchImages(imageUrl, topK);
+
+      const end = performance.now();
       setSearchTime(((end - start) / 1000).toFixed(2));
 
-      const mappedRes = response.results.map((item) => ({
+      // 3️⃣ Map backend results → UI format
+      const mappedResults = response.results.map((item) => ({
         id: item.image_id,
         url: item.url,
-        score: 1 / (1 + item.score), //converts L2 distance → similarity score
         filename: item.filename,
+        score: 1 / (1 + item.score), // L2 → similarity
       }));
-      setResults(mappedRes);
+
+      setResults(mappedResults);
     } catch (error) {
       console.error("Search failed:", error);
+      alert("Search failed. Please try again.");
     } finally {
       setIsSearching(false);
     }
   };
+
 
   return (
     <div className="max-w-6xl mx-auto p-4 space-y-8">
